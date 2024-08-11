@@ -1,0 +1,5 @@
+/**/build/**
+!/**/build/config.txt
+.vscode
+
+!/**/.gitkeep
