@@ -1,11 +1,8 @@
 #include "connection.hpp"
 #include "resources.hpp"
 #include "utils.hpp"
-#include <arpa/inet.h>
 #include <chrono>
-#include <cstdint>
 #include <iostream>
-#include <string>
 #include <thread>
 
 //
