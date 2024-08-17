@@ -1,9 +1,12 @@
 #include "database.hpp"
+#include "resources.hpp"
 #include "statistics.hpp"
 #include <atomic>
+#include <condition_variable>
 #include <fstream>
 #include <mutex>
 #include <shared_mutex>
+#include <thread>
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 
@@ -26,6 +29,10 @@ namespace {
     std::unordered_map<std::string, Value> database;
     std::shared_mutex dataLockingMutex;
     std::atomic<bool> writeFlag = true;
+
+    std::thread databaseSaveThread;
+    std::condition_variable databaseSaveSignal;
+    std::mutex databaseSaveMutex;
 }
 
 void Database::Load()
@@ -57,6 +64,32 @@ void Database::Save()
     std::ofstream fout(FILENAME);
     fout << data.dump();
     fout.close();
+}
+
+void Database::startPeriodicSave()
+{
+    std::thread periodicSave([]() {
+        auto now = std::chrono::high_resolution_clock::now();
+        while (!getExitFlag()) {
+            std::unique_lock lock(databaseSaveMutex);
+            databaseSaveSignal.wait_until(lock, now + std::chrono::seconds(DATABASE_SAVE_PERIOD));
+            now = std::chrono::high_resolution_clock::now();
+
+            Database::Save();
+        }
+    });
+    databaseSaveThread.swap(periodicSave);
+}
+
+void Database::waitPeriodicSave()
+{
+    if (databaseSaveThread.joinable())
+        databaseSaveThread.join();
+}
+
+void Database::interruptPeriodicSaveTimer()
+{
+    databaseSaveSignal.notify_all();
 }
 
 std::string Database::Get(const std::string &key)

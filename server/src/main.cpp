@@ -1,16 +1,13 @@
 #include "connection.hpp"
 #include "database.hpp"
+#include "resources.hpp"
 #include "statistics.hpp"
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
-#include <csignal>
 #include <iostream>
 #include <thread>
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
-
-constexpr auto PORT = 8000;
 
 //
 // the server connection architecture was inspired from
@@ -21,15 +18,8 @@ constexpr auto PORT = 8000;
 namespace {
     void accept();
     void handle_accept(Connection::Handler::Ptr handler, const boost::system::error_code& ec);
-    void periodicPrintStatistics();
     boost::asio::io_service ioService;
     boost::asio::ip::tcp::acceptor acceptor(ioService, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), PORT));
-    std::thread databaseSaveThread([](){});
-    std::condition_variable databaseSaveSignal;
-    std::mutex databaseSaveMutex;
-    std::atomic<bool> exitFlag = false;
-    constexpr auto STATISTICS_PRINT_PERIOD = 5;
-    constexpr auto DATABASE_SAVE_PERIOD = 2;
 
     void accept()
     {
@@ -45,53 +35,22 @@ namespace {
         }
         accept();
     }
-    void periodicPrintStatistics()
-    {
-        while (!exitFlag) {
-            auto now = std::chrono::high_resolution_clock::now();
-            auto stats = Statistics::getRequestsAmount();
-            std::cout << "Statistics of previous 5 seconds:" << std::endl << "\tget=" << stats.get << std::endl << "\tset=" << stats.set << std::endl;
-            std::this_thread::sleep_until(now + std::chrono::seconds(STATISTICS_PRINT_PERIOD));
-        }
-    }
-    void periodicDatabaseSave()
-    {
-        auto now = std::chrono::high_resolution_clock::now();
-        while (!exitFlag) {
-            std::unique_lock lock(databaseSaveMutex);
-            databaseSaveSignal.wait_until(lock, now + std::chrono::seconds(DATABASE_SAVE_PERIOD));
-            now = std::chrono::high_resolution_clock::now();
-
-            Database::Save();
-        }
-    }
-    void interruptHandler(int s)
-    {
-        if (s == SIGINT) {
-            ioService.stop();
-            exitFlag = true;
-            databaseSaveSignal.notify_all();
-        }
-    }
 }
 
 int main()
 {
     try {
-        { // ^C handler
-            struct sigaction sigIntHandler;
-            sigIntHandler.sa_handler = interruptHandler;
-            sigemptyset(&sigIntHandler.sa_mask);
-            sigIntHandler.sa_flags = 0;
-            sigaction(SIGINT, &sigIntHandler, nullptr);
-        }
+        handleCtrlC([]() {
+            ioService.stop();
+            setExitFlag(true);
+            Database::interruptPeriodicSaveTimer();
+        });
         Database::Load();
         accept();
-        std::thread statisticsPrintThread(periodicPrintStatistics);
-        statisticsPrintThread.detach();
-        std::thread databaseSaveThread(periodicDatabaseSave);
+        Statistics::startPeriodicPrint();
+        Database::startPeriodicSave();
         ioService.run();
-        databaseSaveThread.join();
+        Database::waitPeriodicSave();
     }
     catch (std::exception& e) {
         std::cerr << e.what() << std::endl;

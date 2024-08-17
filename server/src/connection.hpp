@@ -1,9 +1,10 @@
 #pragma once
 
 #include <functional>
-#include <vector>
 #include <memory>
-#include <boost/smart_ptr.hpp>
+#include <string>
+#include <tuple>
+#include <vector>
 #include <boost/asio.hpp>
 
 namespace Connection {
@@ -28,11 +29,13 @@ namespace Connection {
         void process();
 
     private:
-        bool processRequest(const std::vector<char>& requestData, std::function<void()> callback, std::function<void(const boost::system::error_code &eCode)> onError);
-        void send(const std::string& responseData, std::function<void()> callback, std::function<void(const boost::system::error_code &eCode)> onError);
+        const boost::system::error_code processRequest(const std::vector<char>& requestData);
+        const std::tuple<const std::vector<char>, boost::system::error_code> receive();
+        const boost::system::error_code send(const std::string &data);
+        const boost::system::error_code send(const std::vector<char> &data);
 
-        void get(const std::string& key, std::function<void()> callback, std::function<void(const boost::system::error_code &eCode)> onError);
-        void set(const std::string& key, const std::string& value, std::function<void()> callback, std::function<void(const boost::system::error_code &eCode)> onError);
+        const boost::system::error_code get(const std::string& key);
+        const boost::system::error_code set(const std::string& key, const std::string& value);
 
         boost::asio::ip::tcp::socket sock;
         boost::asio::streambuf buf;

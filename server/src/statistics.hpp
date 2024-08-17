@@ -10,9 +10,10 @@ namespace Statistics {
         std::size_t get = 0;
         std::size_t set = 0;
     } Requests;
-    const Requests getRequestsAmount();
     void incrementGet();
     void incrementSet();
+
+    void startPeriodicPrint();
 
     // this class is for counting reads and writes for each key
     class Counter {
